@@ -1,6 +1,6 @@
 # Transcript to WebVTT
 
-This repository provides `convert_to_vtt.py`, a script that converts a voice-to-text transcript in JSON format into a bilingual WebVTT subtitle file.
+This repository provides `convert_to_vtt.py`, a script that converts a voice-to-text transcript in JSON format into an English or bilingual WebVTT subtitle file.
 
 ## Requirements
 
@@ -27,6 +27,6 @@ Then run:
 python convert_to_vtt.py transcript.json
 ```
 
-Add `--model MODEL_NAME` to override the model or `--concurrency N` to change concurrency.
+Add `--model MODEL_NAME` to override the model, `--concurrency N` to change concurrency, `--lang LANGUAGE` to translate into an additional language (omit the flag for English only), or `--light-bg` for dark text on a light translucent background.
 
 The script writes `<transcript>.vtt` to the current directory.
