@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Convert transcript JSON to bilingual WebVTT.
+"""Convert transcript JSON to WebVTT with optional translation.
 
 Dependencies:
     pip install openai>=1.0.0 tqdm
@@ -35,6 +35,11 @@ def wrap_and_align(en: str, cn: str, width: int = 42) -> Tuple[str, str]:
     return "<br>".join(en_lines), "<br>".join(cn_lines)
 
 
+def wrap_text(text: str, width: int = 42) -> str:
+    lines = textwrap.wrap(text, width=width) or [""]
+    return "<br>".join(lines)
+
+
 def get_async_client(api_key: str, base_url: str) -> Any:
     try:
         return openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
@@ -58,11 +63,13 @@ async def translate_segment(
     client: Any,
     text: str,
     model: str,
+    language: str,
     semaphore: asyncio.Semaphore,
     logger: logging.Logger,
 ) -> str:
     prompt = (
-        "Translate the following English sentence into natural, fluent Simplified Chinese and return ONLY the translation with no additional text:\n"
+        "Translate the following English sentence into natural, fluent "
+        f"{language} and return ONLY the translation with no additional text:\n"
         + text
     )
     for attempt in range(3):
@@ -88,13 +95,21 @@ async def translate_all(
     client: Any,
     segments: Iterable[dict[str, Any]],
     model: str,
+    language: str,
     concurrency: int,
     logger: logging.Logger,
 ) -> list[str]:
     semaphore = asyncio.Semaphore(concurrency)
     tasks = [
         asyncio.create_task(
-            translate_segment(client, seg.get("text", ""), model, semaphore, logger)
+            translate_segment(
+                client,
+                seg.get("text", ""),
+                model,
+                language,
+                semaphore,
+                logger,
+            )
         )
         for seg in segments
     ]
@@ -104,24 +119,66 @@ async def translate_all(
     return translations
 
 
-def write_vtt(segments: list[dict[str, Any]], path: str) -> None:
+def write_vtt(segments: list[dict[str, Any]], path: str, light_bg: bool = False) -> None:
+    style = (
+        "::cue {\n"
+        "  color: #000000;\n"
+        "  background-color: rgba(255,255,255,0.60);\n"
+        "  font-size: 1.15em;\n"
+        "  font-weight: 600;\n"
+        "  text-shadow: 0 0 3px #FFF, 0 0 6px #FFF;\n"
+        "  line-height: 1.35;\n"
+        '  font-family: "Helvetica Neue", Arial, sans-serif;\n'
+        "}\n"
+    )
+    if not light_bg:
+        style = (
+            "::cue {\n"
+            "  color: #FFFFFF;\n"
+            "  background-color: rgba(0,0,0,0.60);\n"
+            "  font-size: 1.15em;\n"
+            "  font-weight: 600;\n"
+            "  text-shadow: 0 0 3px #000, 0 0 6px #000;\n"
+            "  line-height: 1.35;\n"
+            '  font-family: "Helvetica Neue", Arial, sans-serif;\n'
+            "}\n"
+        )
     with open(path, "w", encoding="utf-8") as f:
         f.write("WEBVTT\n\n")
+        f.write("STYLE\n")
+        f.write(style)
+        f.write("\n")
         for idx, seg in enumerate(segments, 1):
             start, end = seg.get("timestamp", [0, 0])
             en = seg.get("text", "").strip()
-            cn = seg.get("cn", "").strip()
-            en_line, cn_line = wrap_and_align(en, cn)
+            trans = seg.get("trans", "").strip()
+            if trans:
+                en_line, trans_line = wrap_and_align(en, trans)
+            else:
+                en_line = wrap_text(en)
+                trans_line = None
             f.write(f"{idx}\n")
-            f.write(f"{seconds_to_timestamp(float(start))} --> {seconds_to_timestamp(float(end))}\n")
-            f.write(f"{en_line}\n{cn_line}\n\n")
+            f.write(
+                f"{seconds_to_timestamp(float(start))} --> {seconds_to_timestamp(float(end))}\n"
+            )
+            if trans_line is not None:
+                f.write(f"{en_line}\n{trans_line}\n\n")
+            else:
+                f.write(f"{en_line}\n\n")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert transcript JSON to bilingual WebVTT")
+    parser = argparse.ArgumentParser(
+        description="Convert transcript JSON to WebVTT with optional translation"
+    )
     parser.add_argument("input", help="Path to transcript JSON file")
     parser.add_argument("--model", help="Override OPENAI_MODEL")
     parser.add_argument("--concurrency", type=int, default=8, help="Number of concurrent API calls")
+    parser.add_argument(
+        "--lang",
+        help="Translate into this language (omit for no translation)",
+    )
+    parser.add_argument("--light-bg", action="store_true", help="Use dark text on a translucent light background")
     return parser.parse_args()
 
 
@@ -138,13 +195,21 @@ async def async_main(args: argparse.Namespace, logger: logging.Logger) -> None:
 
     segments = load_segments(args.input)
     client = get_async_client(api_key, base_url)
-    logger.info("Translating %d segments using model %s...", len(segments), model)
-    translations = await translate_all(client, segments, model, args.concurrency, logger)
-    for seg, trans in zip(segments, translations):
-        seg["cn"] = trans
+    if args.lang:
+        logger.info(
+            "Translating %d segments into %s using model %s...",
+            len(segments),
+            args.lang,
+            model,
+        )
+        translations = await translate_all(
+            client, segments, model, args.lang, args.concurrency, logger
+        )
+        for seg, trans in zip(segments, translations):
+            seg["trans"] = trans
     out_name = os.path.splitext(os.path.basename(args.input))[0] + ".vtt"
     out_path = os.path.join(os.getcwd(), out_name)
-    write_vtt(segments, out_path)
+    write_vtt(segments, out_path, args.light_bg)
     logger.info("Wrote %s", out_path)
 
 
