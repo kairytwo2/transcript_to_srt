@@ -27,6 +27,6 @@ Then run:
 python convert_to_vtt.py transcript.json
 ```
 
-Add `--model MODEL_NAME` to override the model, `--concurrency N` to change concurrency, `--lang LANGUAGE` to translate into an additional language (omit the flag for English only), `--font-size SIZE` to change the subtitle font size in `em` units, or `--light-bg` for dark text on a light translucent background.
+Add `--model MODEL_NAME` to override the model, `--concurrency N` to change concurrency, `--lang LANGUAGE` to translate into an additional language (omit the flag for English only), `--font-size SIZE` to change the subtitle font size in `em` units, `--font-color COLOR` to set the text color (default `white`), `--background-color COLOR` to set the background color (default `transparent`), and `--output PATH` to specify where the VTT file is saved.
 
-The script writes `<transcript>.vtt` to the current directory.
+The script writes `<transcript>.vtt` to the current directory if `--output` is not provided.

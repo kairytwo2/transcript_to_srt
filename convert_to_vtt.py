@@ -127,32 +127,30 @@ async def translate_all(
 def write_vtt(
     segments: list[dict[str, Any]],
     path: str,
-    light_bg: bool = False,
+    font_color: str = "white",
+    background_color: str = "transparent",
     font_size: float = 1.0,
 ) -> None:
-    style = (
-        "::cue {\n"
-        "  color: #000000;\n"
-        "  background-color: rgba(255,255,255,0.60);\n"
-        f"  font-size: {font_size}em;\n"
-        "  font-weight: 600;\n"
-        "  text-shadow: 0 0 3px #FFF, 0 0 6px #FFF;\n"
-        "  line-height: 1.35;\n"
-        '  font-family: "Helvetica Neue", Arial, sans-serif;\n'
-        "}\n"
+    """Write segments to a WebVTT file with custom styling."""
+    shadow = "0 0 3px #000, 0 0 6px #000"
+    if font_color.lower() in {"black", "#000", "#000000"}:
+        shadow = "0 0 3px #FFF, 0 0 6px #FFF"
+
+    lines = ["::cue {", f"  color: {font_color};"]
+    if background_color.lower() != "transparent" and background_color != "":
+        lines.append(f"  background-color: {background_color};")
+    lines.extend(
+        [
+            f"  font-size: {font_size}em;",
+            "  font-weight: 600;",
+            f"  text-shadow: {shadow};",
+            "  line-height: 1.35;",
+            '  font-family: "Helvetica Neue", Arial, sans-serif;',
+            "}",
+            "",
+        ]
     )
-    if not light_bg:
-        style = (
-            "::cue {\n"
-            "  color: #FFFFFF;\n"
-            "  background-color: rgba(0,0,0,0.60);\n"
-            f"  font-size: {font_size}em;\n"
-            "  font-weight: 600;\n"
-            "  text-shadow: 0 0 3px #000, 0 0 6px #000;\n"
-            "  line-height: 1.35;\n"
-            '  font-family: "Helvetica Neue", Arial, sans-serif;\n'
-            "}\n"
-        )
+    style = "\n".join(lines)
     with open(path, "w", encoding="utf-8") as f:
         f.write("WEBVTT\n\n")
         f.write("STYLE\n")
@@ -188,12 +186,26 @@ def parse_args() -> argparse.Namespace:
         "--lang",
         help="Translate into this language (omit for no translation)",
     )
-    parser.add_argument("--light-bg", action="store_true", help="Use dark text on a translucent light background")
+    parser.add_argument(
+        "--font-color",
+        default="white",
+        help="Subtitle text color (default: white)",
+    )
+    parser.add_argument(
+        "--background-color",
+        default="transparent",
+        help="Subtitle background color (default: transparent)",
+    )
     parser.add_argument(
         "--font-size",
         type=float,
         default=1.0,
         help="Font size in em units for subtitles",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="Path to output VTT file (default: <input>.vtt in current directory)",
     )
     return parser.parse_args()
 
@@ -224,8 +236,14 @@ async def async_main(args: argparse.Namespace, logger: logging.Logger) -> None:
         for seg, trans in zip(segments, translations):
             seg["trans"] = trans
     out_name = os.path.splitext(os.path.basename(args.input))[0] + ".vtt"
-    out_path = os.path.join(os.getcwd(), out_name)
-    write_vtt(segments, out_path, args.light_bg, args.font_size)
+    out_path = args.output or os.path.join(os.getcwd(), out_name)
+    write_vtt(
+        segments,
+        out_path,
+        args.font_color,
+        args.background_color,
+        args.font_size,
+    )
     logger.info("Wrote %s", out_path)
 
 
