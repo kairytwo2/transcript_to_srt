@@ -50,12 +50,17 @@ def get_async_client(api_key: str, base_url: str) -> Any:
 def load_segments(path: str) -> list[dict[str, Any]]:
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    try:
-        segments = data["output"]["segments"]
-    except Exception as exc:
-        raise ValueError("Invalid transcript JSON structure") from exc
+    segments = None
+    # Common structure: {"output": {"segments": [...]}}
+    if isinstance(data, dict):
+        output = data.get("output")
+        if isinstance(output, dict):
+            segments = output.get("segments") or output.get("chunks")
+        # Some APIs may return the list at the top level
+        if segments is None:
+            segments = data.get("segments") or data.get("chunks")
     if not isinstance(segments, list):
-        raise ValueError("segments should be a list")
+        raise ValueError("Invalid transcript JSON structure")
     return segments
 
 
