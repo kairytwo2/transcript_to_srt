@@ -265,11 +265,13 @@ async def async_main(args: argparse.Namespace, logger: logging.Logger) -> None:
         )
         for grp, trans in zip(groups, translations):
             lines = trans.splitlines()
+
             if len(lines) != len(grp):
                 logger.warning(
                     "Translation line count mismatch: expected %d, got %d", 
                     len(grp), len(lines)
                 )
+
             for seg, line in zip(grp, lines):
                 seg["trans"] = line.strip()
     out_name = os.path.splitext(os.path.basename(args.input))[0] + ".vtt"
