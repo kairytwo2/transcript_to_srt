@@ -124,12 +124,17 @@ async def translate_all(
     return translations
 
 
-def write_vtt(segments: list[dict[str, Any]], path: str, light_bg: bool = False) -> None:
+def write_vtt(
+    segments: list[dict[str, Any]],
+    path: str,
+    light_bg: bool = False,
+    font_size: float = 1.0,
+) -> None:
     style = (
         "::cue {\n"
         "  color: #000000;\n"
         "  background-color: rgba(255,255,255,0.60);\n"
-        "  font-size: 1.15em;\n"
+        f"  font-size: {font_size}em;\n"
         "  font-weight: 600;\n"
         "  text-shadow: 0 0 3px #FFF, 0 0 6px #FFF;\n"
         "  line-height: 1.35;\n"
@@ -141,7 +146,7 @@ def write_vtt(segments: list[dict[str, Any]], path: str, light_bg: bool = False)
             "::cue {\n"
             "  color: #FFFFFF;\n"
             "  background-color: rgba(0,0,0,0.60);\n"
-            "  font-size: 1.15em;\n"
+            f"  font-size: {font_size}em;\n"
             "  font-weight: 600;\n"
             "  text-shadow: 0 0 3px #000, 0 0 6px #000;\n"
             "  line-height: 1.35;\n"
@@ -184,6 +189,12 @@ def parse_args() -> argparse.Namespace:
         help="Translate into this language (omit for no translation)",
     )
     parser.add_argument("--light-bg", action="store_true", help="Use dark text on a translucent light background")
+    parser.add_argument(
+        "--font-size",
+        type=float,
+        default=1.0,
+        help="Font size in em units for subtitles",
+    )
     return parser.parse_args()
 
 
@@ -214,7 +225,7 @@ async def async_main(args: argparse.Namespace, logger: logging.Logger) -> None:
             seg["trans"] = trans
     out_name = os.path.splitext(os.path.basename(args.input))[0] + ".vtt"
     out_path = os.path.join(os.getcwd(), out_name)
-    write_vtt(segments, out_path, args.light_bg)
+    write_vtt(segments, out_path, args.light_bg, args.font_size)
     logger.info("Wrote %s", out_path)
 
 
