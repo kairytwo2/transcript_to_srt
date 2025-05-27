@@ -64,6 +64,32 @@ def load_segments(path: str) -> list[dict[str, Any]]:
     return segments
 
 
+def group_segments_by_paragraph(
+    segments: Iterable[dict[str, Any]], max_chars: int = 500
+) -> list[list[dict[str, Any]]]:
+    """Group consecutive segments into paragraphs.
+
+    A new group starts when a segment ends with a sentence terminator
+    ('.', '!', '?') or when the accumulated character count exceeds
+    ``max_chars``.
+    """
+
+    groups: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    length = 0
+    for seg in segments:
+        current.append(seg)
+        text = seg.get("text", "")
+        length += len(text)
+        if text.strip().endswith((".", "!", "?")) or length >= max_chars:
+            groups.append(current)
+            current = []
+            length = 0
+    if current:
+        groups.append(current)
+    return groups
+
+
 async def translate_segment(
     client: Any,
     text: str,
@@ -73,9 +99,9 @@ async def translate_segment(
     logger: logging.Logger,
 ) -> str:
     prompt = (
-        "Translate the following English sentence into natural, fluent "
-        f"{language} and return ONLY the translation with no additional text:\n"
-        + text
+        "Translate the following English text into natural, fluent "
+        f"{language}. Keep all line breaks and return exactly the same "
+        "number of lines as the input without any extra text:\n" + text
     )
     for attempt in range(3):
         try:
@@ -98,26 +124,28 @@ async def translate_segment(
 
 async def translate_all(
     client: Any,
-    segments: Iterable[dict[str, Any]],
+    groups: Iterable[list[dict[str, Any]]],
     model: str,
     language: str,
     concurrency: int,
     logger: logging.Logger,
 ) -> list[str]:
     semaphore = asyncio.Semaphore(concurrency)
-    tasks = [
-        asyncio.create_task(
-            translate_segment(
-                client,
-                seg.get("text", ""),
-                model,
-                language,
-                semaphore,
-                logger,
+    tasks = []
+    for grp in groups:
+        text = "\n".join(seg.get("text", "") for seg in grp)
+        tasks.append(
+            asyncio.create_task(
+                translate_segment(
+                    client,
+                    text,
+                    model,
+                    language,
+                    semaphore,
+                    logger,
+                )
             )
         )
-        for seg in segments
-    ]
     translations: list[str] = []
     for coro in tqdm(asyncio.as_completed(tasks), total=len(tasks)):
         translations.append(await coro)
@@ -222,19 +250,23 @@ async def async_main(args: argparse.Namespace, logger: logging.Logger) -> None:
         sys.exit(1)
 
     segments = load_segments(args.input)
+    groups = group_segments_by_paragraph(segments)
     client = get_async_client(api_key, base_url)
     if args.lang:
         logger.info(
-            "Translating %d segments into %s using model %s...",
+            "Translating %d segments in %d groups into %s using model %s...",
             len(segments),
+            len(groups),
             args.lang,
             model,
         )
         translations = await translate_all(
-            client, segments, model, args.lang, args.concurrency, logger
+            client, groups, model, args.lang, args.concurrency, logger
         )
-        for seg, trans in zip(segments, translations):
-            seg["trans"] = trans
+        for grp, trans in zip(groups, translations):
+            lines = trans.splitlines()
+            for seg, line in zip(grp, lines):
+                seg["trans"] = line.strip()
     out_name = os.path.splitext(os.path.basename(args.input))[0] + ".vtt"
     out_path = args.output or os.path.join(os.getcwd(), out_name)
     write_vtt(
